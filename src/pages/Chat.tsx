@@ -1,95 +1,170 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams } from "react-router-dom";
-import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp } from "firebase/firestore";
+import { 
+  doc, 
+  collection, 
+  query, 
+  orderBy, 
+  onSnapshot, 
+  addDoc, 
+  serverTimestamp, 
+  updateDoc,
+  getDoc
+} from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/contexts/AuthContext";
 import { AppLayout } from "@/components/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send } from "lucide-react";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Send, Loader2, Github } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 interface Message {
   id: string;
   text: string;
-  senderUid: string;
-  senderName: string;
-  createdAt: any;
+  senderId: string;
+  timestamp: any;
 }
 
 export default function Chat() {
-  const { combinedId } = useParams<{ combinedId: string }>();
-  const { user, profile } = useAuth();
+  const { conversationId } = useParams<{ conversationId: string }>();
+  const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
-  const [text, setText] = useState("");
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const [newMessage, setNewMessage] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [otherUser, setOtherUser] = useState<{ name: string; verified?: boolean } | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
+  // 1. Listen for Real-time Messages
   useEffect(() => {
-    if (!combinedId) return;
-    const q = query(collection(db, "chats", combinedId, "messages"), orderBy("createdAt", "asc"));
-    const unsub = onSnapshot(q, (snap) => {
-      setMessages(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Message)));
-    });
-    return unsub;
-  }, [combinedId]);
+    if (!conversationId) return;
 
+    const messagesRef = collection(db, "conversations", conversationId, "messages");
+    const q = query(messagesRef, orderBy("timestamp", "asc"));
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const msgs = snapshot.docs.map((d) => ({
+        id: d.id,
+        ...d.data(),
+      })) as Message[];
+      setMessages(msgs);
+      setLoading(false);
+      
+      // Auto-scroll to bottom
+      setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+    });
+
+    return () => unsubscribe();
+  }, [conversationId]);
+
+  // 2. Fetch Other User Info (to show name and GitHub verification)
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    const fetchOtherUser = async () => {
+      if (!conversationId || !user) return;
+      const convSnap = await getDoc(doc(db, "conversations", conversationId));
+      if (convSnap.exists()) {
+        const participants = convSnap.data().participants;
+        const otherId = participants.find((id: string) => id !== user.uid);
+        
+        const userSnap = await getDoc(doc(db, "profiles", otherId));
+        if (userSnap.exists()) {
+          setOtherUser({
+            name: userSnap.data().name,
+            verified: userSnap.data().verifiedSkills?.length > 0 // Linking to your Octokit work!
+          });
+        }
+      }
+    };
+    fetchOtherUser();
+  }, [conversationId, user]);
 
-  const handleSend = async () => {
-    if (!text.trim() || !user || !profile || !combinedId) return;
-    await addDoc(collection(db, "chats", combinedId, "messages"), {
-      text: text.trim(),
-      senderUid: user.uid,
-      senderName: profile.name,
-      createdAt: serverTimestamp(),
-    });
-    setText("");
+  // 3. Send Message Function
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMessage.trim() || !conversationId || !user) return;
+
+    const text = newMessage;
+    setNewMessage(""); // Clear input early for better UX
+
+    try {
+      const messagesRef = collection(db, "conversations", conversationId, "messages");
+      
+      // Add message to sub-collection
+      await addDoc(messagesRef, {
+        text,
+        senderId: user.uid,
+        timestamp: serverTimestamp(),
+      });
+
+      // Update parent doc for the Inbox preview
+      await updateDoc(doc(db, "conversations", conversationId), {
+        lastMessage: text,
+        updatedAt: serverTimestamp(),
+      });
+    } catch (error) {
+      console.error("Error sending message:", error);
+    }
   };
 
-  const formatTime = (ts: any) => {
-    if (!ts?.toDate) return "";
-    return ts.toDate().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  };
+  if (loading) {
+    return (
+      <AppLayout>
+        <div className="flex items-center justify-center h-[60vh]">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </AppLayout>
+    );
+  }
 
   return (
     <AppLayout>
-      <div className="max-w-3xl mx-auto flex flex-col h-[calc(100vh-8rem)]">
-        <h1 className="text-xl font-display text-primary neon-text mb-4">
-          Chat <span className="text-sm text-muted-foreground font-mono">#{combinedId?.slice(0, 12)}</span>
-        </h1>
-
-        <div className="flex-1 overflow-auto space-y-3 glass-card p-4 mb-4">
-          {messages.length === 0 && (
-            <p className="text-center text-muted-foreground text-sm py-8">No messages yet. Say hello!</p>
-          )}
-          {messages.map((m) => {
-            const isMe = m.senderUid === user?.uid;
-            return (
-              <div key={m.id} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
-                <div className={`max-w-[70%] rounded-xl px-4 py-2.5 ${isMe ? "gradient-primary text-primary-foreground" : "bg-muted border border-border/50"}`}>
-                  {!isMe && <p className="text-xs font-semibold text-primary mb-1">{m.senderName}</p>}
-                  <p className="text-sm">{m.text}</p>
-                  <p className={`text-[10px] mt-1 ${isMe ? "text-primary-foreground/60" : "text-muted-foreground"}`}>{formatTime(m.createdAt)}</p>
-                </div>
-              </div>
-            );
-          })}
-          <div ref={bottomRef} />
+      <div className="max-w-3xl mx-auto h-[80vh] flex flex-col glass-card overflow-hidden">
+        {/* Chat Header */}
+        <div className="p-4 border-b border-border/50 bg-secondary/30 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <h2 className="font-semibold text-lg">{otherUser?.name || "Chat"}</h2>
+            {otherUser?.verified && (
+              <Badge variant="outline" className="border-neon-green text-neon-green flex gap-1 items-center px-1.5 py-0">
+                <Github className="h-3 w-3" /> Verified
+              </Badge>
+            )}
+          </div>
         </div>
 
-        <div className="flex gap-2">
+        {/* Messages Area */}
+        <ScrollArea className="flex-1 p-4">
+          <div className="space-y-4">
+            {messages.map((msg) => {
+              const isMe = msg.senderId === user?.uid;
+              return (
+                <div key={msg.id} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
+                  <div className={`max-w-[70%] px-4 py-2 rounded-2xl ${
+                    isMe 
+                    ? "bg-primary text-primary-foreground rounded-tr-none" 
+                    : "bg-muted text-foreground rounded-tl-none"
+                  }`}>
+                    <p className="text-sm">{msg.text}</p>
+                  </div>
+                </div>
+              );
+            })}
+            <div ref={scrollRef} />
+          </div>
+        </ScrollArea>
+
+        {/* Input Area */}
+        <form onSubmit={handleSendMessage} className="p-4 border-t border-border/50 bg-background/50 flex gap-2">
           <Input
-            placeholder="Type a message..."
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSend()}
-            className="bg-input border-border/50 focus:border-primary"
+            placeholder="Type your message..."
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            className="flex-1 bg-input border-border/50 focus:border-primary"
           />
-          <Button onClick={handleSend} disabled={!text.trim()} className="gradient-primary text-primary-foreground px-6">
+          <Button type="submit" size="icon" className="bg-primary hover:bg-primary/90">
             <Send className="h-4 w-4" />
           </Button>
-        </div>
+        </form>
       </div>
     </AppLayout>
   );

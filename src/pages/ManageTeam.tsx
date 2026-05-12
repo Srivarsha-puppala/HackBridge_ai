@@ -1,124 +1,109 @@
-import { useAuth } from "@/contexts/AuthContext";
-import { AppLayout } from "@/components/AppLayout";
-import { Button } from "@/components/ui/button";
-import { handleAccept, handleDecline } from "@/lib/teamActions";
-import { toast } from "sonner";
-import { useNavigate } from "react-router-dom";
-import { getCombinedId } from "@/lib/teamActions";
-import { Check, X, MessageCircle, Users, ArrowDownLeft, ArrowUpRight } from "lucide-react";
+import React, { useState, useEffect } from 'react';
+import { auth } from '../lib/firebase';
+import { subscribeToIncomingRequests, updateRequestStatus } from '../services/invitationService';
+import { Shield, UserPlus, Check, X, Clock, Users } from 'lucide-react';
+import { toast } from 'sonner';
 
-export default function ManageTeam() {
-  const { user, profile } = useAuth();
-  const navigate = useNavigate();
+const ManageTeam = () => {
+  const [requests, setRequests] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const onAccept = async (req: { uid: string; name: string }) => {
-    if (!user || !profile) return;
+  useEffect(() => {
+    if (!auth.currentUser) return;
+
+    // Use the service to listen for invitations where receiverId == current user
+    const unsubscribe = subscribeToIncomingRequests(auth.currentUser.uid, (data) => {
+      setRequests(data);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const handleAction = async (requestId: string, status: 'accepted' | 'rejected') => {
     try {
-      await handleAccept(user.uid, profile.name, req.uid, req.name);
-      toast.success(`${req.name} joined your squad!`);
-    } catch {
-      toast.error("Failed to accept request");
+      await updateRequestStatus(requestId, status);
+      // The real-time listener will automatically remove the request from the UI
+    } catch (error) {
+      console.error("Action failed:", error);
     }
   };
 
-  const onDecline = async (req: { uid: string; name: string }) => {
-    if (!user || !profile) return;
-    try {
-      await handleDecline(user.uid, req.uid, req.name);
-      toast.info("Request declined");
-    } catch {
-      toast.error("Failed to decline");
-    }
-  };
-
-  if (!profile || !user) return null;
+  if (loading) return <div className="p-10 text-white animate-pulse">Loading Operations...</div>;
 
   return (
-    <AppLayout>
-      <div className="max-w-4xl mx-auto space-y-8">
-        <h1 className="text-3xl font-display text-primary neon-text">Manage Team</h1>
-
-        {/* My Squad */}
-        <section className="glass-card p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <Users className="h-5 w-5 text-primary" />
-            <h2 className="text-xl font-display text-primary">My Active Squad</h2>
-          </div>
-          {profile.mySquad?.length > 0 ? (
-            <div className="space-y-3">
-              {profile.mySquad.map((m) => (
-                <div key={m.uid} className="flex items-center justify-between p-4 rounded-lg bg-muted/30 border border-border/50">
-                  <div>
-                    <p className="font-semibold">{m.name}</p>
-                    <p className="text-xs text-muted-foreground font-mono">ID: {m.combinedId?.slice(0, 12)}...</p>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="border-primary/30 text-primary hover:bg-primary/10"
-                    onClick={() => navigate(`/chat/${m.combinedId}`)}
-                  >
-                    <MessageCircle className="h-4 w-4 mr-1" /> Chat
-                  </Button>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-muted-foreground text-sm">No squad members yet. Start exploring!</p>
-          )}
-        </section>
-
-        {/* Incoming Requests */}
-        <section className="glass-card p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <ArrowDownLeft className="h-5 w-5 text-neon-magenta" />
-            <h2 className="text-xl font-display text-neon-magenta">Incoming Requests</h2>
-          </div>
-          {profile.incomingRequests?.length > 0 ? (
-            <div className="space-y-3">
-              {profile.incomingRequests.map((req) => (
-                <div key={req.uid} className="flex items-center justify-between p-4 rounded-lg bg-muted/30 border border-border/50">
-                  <p className="font-semibold">{req.name}</p>
-                  <div className="flex gap-2">
-                    <Button size="sm" onClick={() => onAccept(req)} className="gradient-primary text-primary-foreground">
-                      <Check className="h-4 w-4 mr-1" /> Accept
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => onDecline(req)} className="border-destructive/30 text-destructive hover:bg-destructive/10">
-                      <X className="h-4 w-4 mr-1" /> Decline
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-muted-foreground text-sm">No incoming requests</p>
-          )}
-        </section>
-
-        {/* Sent Invitations */}
-        <section className="glass-card p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <ArrowUpRight className="h-5 w-5 text-neon-purple" />
-            <h2 className="text-xl font-display text-secondary">Sent Invitations</h2>
-          </div>
-          {profile.sentInvitations?.length > 0 ? (
-            <div className="space-y-3">
-              {profile.sentInvitations.map((inv) => (
-                <div key={inv.uid} className="flex items-center justify-between p-4 rounded-lg bg-muted/30 border border-border/50">
-                  <p className="font-semibold">{inv.name}</p>
-                  <Badge className="bg-secondary/10 text-secondary border border-secondary/30">Pending</Badge>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-muted-foreground text-sm">No sent invitations</p>
-          )}
-        </section>
+    <div className="max-w-5xl mx-auto p-8 text-white min-h-screen">
+      {/* Header Section */}
+      <div className="flex justify-between items-center mb-10">
+        <div>
+          <h1 className="text-3xl font-black uppercase tracking-tighter flex items-center gap-3">
+            <Shield className="text-cyan-500" /> Squad Operations
+          </h1>
+          <p className="text-gray-500 text-sm mt-1">Review and verify incoming join requests.</p>
+        </div>
+        
+        <div className="bg-[#11141b] border border-gray-800 px-4 py-2 rounded-full flex items-center gap-2">
+          <span className="text-cyan-500 font-bold">{requests.length}</span>
+          <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Pending</span>
+        </div>
       </div>
-    </AppLayout>
-  );
-}
 
-function Badge({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <span className={`text-xs px-2 py-1 rounded-full font-medium ${className}`}>{children}</span>;
-}
+      {/* Requests List */}
+      <div className="space-y-4">
+        {requests.length > 0 ? (
+          requests.map((req) => (
+            <div key={req.id} className="bg-[#11141b] border border-gray-800 rounded-3xl p-6 flex items-center justify-between group hover:border-gray-700 transition-all">
+              <div className="flex items-center gap-6">
+                <div className="w-12 h-12 bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl flex items-center justify-center border border-gray-700">
+                  <UserPlus className="text-gray-400" size={20} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-lg">{req.senderName}</h3>
+                    <span className="text-[10px] bg-cyan-500/10 text-cyan-500 px-2 py-0.5 rounded-md border border-cyan-500/20 uppercase font-black">
+                      Applicant
+                    </span>
+                  </div>
+                  <p className="text-gray-500 text-xs mt-1 flex items-center gap-1">
+                    <Users size={12} /> Wants to join <span className="text-gray-300 font-bold">{req.teamName}</span>
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button 
+                  onClick={() => handleAction(req.id, 'rejected')}
+                  className="p-3 rounded-xl border border-gray-800 text-gray-500 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/20 transition-all"
+                  title="Decline"
+                >
+                  <X size={20} />
+                </button>
+                <button 
+                  onClick={() => handleAction(req.id, 'accepted')}
+                  className="bg-white text-black px-6 py-3 rounded-xl font-bold text-sm flex items-center gap-2 hover:bg-cyan-500 transition-all"
+                >
+                  <Check size={18} /> Approve Hacker
+                </button>
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="flex flex-col items-center justify-center py-20 bg-[#11141b]/50 border border-dashed border-gray-800 rounded-[2.5rem]">
+            <div className="w-16 h-16 bg-gray-900/50 rounded-full flex items-center justify-center mb-4">
+              <Shield className="text-gray-700" size={32} />
+            </div>
+            <p className="text-gray-500 font-bold uppercase tracking-widest text-xs">Your squad is secure. No new requests.</p>
+          </div>
+        )}
+      </div>
+
+      {/* Bottom Status Bar */}
+      <div className="mt-12 pt-6 border-t border-gray-900 flex items-center gap-4 text-[10px] font-black uppercase tracking-widest text-gray-700">
+        <Clock size={12} /> Live Sync Active
+        <span className="w-1 h-1 bg-green-500 rounded-full animate-ping"></span>
+      </div>
+    </div>
+  );
+};
+
+export default ManageTeam;

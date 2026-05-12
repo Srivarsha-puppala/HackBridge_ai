@@ -13,6 +13,10 @@ import ManageTeam from "./pages/ManageTeam";
 import ChatList from "./pages/ChatList";
 import Chat from "./pages/Chat";
 import NotFound from "./pages/NotFound";
+import PublicProfile from "./PublicProfile";
+import CreateTeam from "./pages/CreateTeam";
+import MyTeams from './pages/MyTeams';
+import Profile from './pages/Profile';
 
 const queryClient = new QueryClient();
 
@@ -30,9 +34,17 @@ const App = () => (
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/find-team" element={<FindTeam />} />
             <Route path="/manage-team" element={<ManageTeam />} />
+            <Route path="/my-teams" element={<MyTeams />} />
+            {/* The Inbox: Shows all your active conversations */}
             <Route path="/chat" element={<ChatList />} />
-            <Route path="/chat/:combinedId" element={<Chat />} />
+            
+            {/* The Chat Window: Updated to use conversationId for the Firestore Doc ID */}
+            <Route path="/chat/:conversationId" element={<Chat />} />
+            <Route path="/profile" element={<Profile />} />
             <Route path="*" element={<NotFound />} />
+            <Route path="/profile/:uid" element={<PublicProfile />} />
+      
+            <Route path="/create-team" element={<CreateTeam />} />
           </Routes>
         </AuthProvider>
       </BrowserRouter>

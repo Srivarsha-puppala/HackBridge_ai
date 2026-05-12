@@ -1,88 +1,109 @@
-import { Zap, LayoutDashboard, Search, Users, MessageCircle, LogOut } from "lucide-react";
-import { NavLink } from "@/components/NavLink";
-import { useLocation, useNavigate } from "react-router-dom";
+import React from "react";
+import { 
+  LayoutDashboard, 
+  Search, 
+  Users, 
+  MessageSquare, 
+  PlusCircle, 
+  LogOut,
+  User
+} from "lucide-react";
+import { Link, useLocation } from "react-router-dom";
+import { auth } from "../lib/firebase"; // Ensure path matches your 'lib' folder
 import { signOut } from "firebase/auth";
-import { auth } from "@/lib/firebase";
-import { useAuth } from "@/contexts/AuthContext";
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarFooter,
-  useSidebar,
-} from "@/components/ui/sidebar";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
-const links = [
-  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
-  { title: "Find Team", url: "/find-team", icon: Search },
-  { title: "Manage Team", url: "/manage-team", icon: Users },
-  { title: "Chat", url: "/chat", icon: MessageCircle },
-];
+const AppSidebar: React.FC = () => {
+  const location = useLocation();
 
-export function AppSidebar() {
-  const { state } = useSidebar();
-  const collapsed = state === "collapsed";
-  const { profile } = useAuth();
-  const navigate = useNavigate();
+  const navItems = [
+    {
+      title: "Dashboard",
+      url: "/dashboard",
+      icon: LayoutDashboard,
+    },
+    {
+      title: "Find Team",
+      url: "/find-team",
+      icon: Search,
+    },
+    {
+      title: "My Squads", // Renamed for clarity
+      url: "/my-teams",  // Updated URL
+      icon: Users,       
+    },
+    {
+      title: "Create Team",
+      url: "/create-team",
+      icon: PlusCircle,
+    },
+    {
+      title: "Manage Team",
+      url: "/manage-team",
+      icon: LayoutDashboard,
+    },
+    
+  ];
 
   const handleLogout = async () => {
-    await signOut(auth);
-    navigate("/");
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error("Logout Error:", error);
+    }
   };
 
   return (
-    <Sidebar collapsible="icon" className="border-r border-border/50">
-      <div className="p-4 flex items-center gap-3 border-b border-border/50">
-        <Zap className="h-6 w-6 text-primary flex-shrink-0" />
-        {!collapsed && <span className="font-display text-lg text-primary tracking-wider neon-text">HackBridge</span>}
+    <div className="w-64 bg-[#0a0c10] border-r border-gray-800 flex flex-col h-screen sticky top-0">
+      {/* Brand Logo */}
+      <div className="p-6 flex items-center gap-3">
+        <div className="w-8 h-8 bg-cyan-500 rounded-lg flex items-center justify-center">
+          <span className="text-white font-bold text-xl">H</span>
+        </div>
+        <h1 className="text-xl font-bold text-white tracking-tight">HackBridge</h1>
       </div>
 
-      {!collapsed && profile && (
-        <div className="p-4 border-b border-border/50">
-          <div className="flex items-center gap-3">
-            <Avatar className="h-10 w-10 border border-primary/30">
-              <AvatarFallback className="bg-muted text-primary font-display text-sm">
-                {profile.name?.slice(0, 2).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
-            <div className="min-w-0">
-              <p className="font-semibold text-sm truncate">{profile.name}</p>
-              <p className="text-xs text-muted-foreground truncate">{profile.role}</p>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Navigation Links */}
+      <nav className="flex-1 px-4 space-y-1 mt-4">
+        {navItems.map((item) => {
+          const isActive = location.pathname === item.url;
+          const Icon = item.icon;
 
-      <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {links.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild>
-                    <NavLink to={item.url} end className="hover:bg-muted/50" activeClassName="bg-muted text-primary font-medium neon-border">
-                      <item.icon className="mr-2 h-4 w-4" />
-                      {!collapsed && <span>{item.title}</span>}
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      </SidebarContent>
+          return (
+            <Link
+              key={item.title}
+              to={item.url}
+              className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group ${
+                isActive 
+                  ? "bg-cyan-500/10 text-cyan-400 border border-cyan-500/20" 
+                  : "text-gray-400 hover:bg-gray-800/50 hover:text-white"
+              }`}
+            >
+              <Icon size={20} className={`${isActive ? "text-cyan-400" : "group-hover:text-white"}`} />
+              <span className="font-medium">{item.title}</span>
+            </Link>
+          );
+        })}
+      </nav>
 
-      <SidebarFooter className="p-2">
-        <SidebarMenuButton onClick={handleLogout} className="hover:bg-destructive/10 text-muted-foreground hover:text-destructive">
-          <LogOut className="mr-2 h-4 w-4" />
-          {!collapsed && <span>Logout</span>}
-        </SidebarMenuButton>
-      </SidebarFooter>
-    </Sidebar>
+      {/* Bottom Profile & Logout */}
+      <div className="p-4 border-t border-gray-800 space-y-2">
+        <Link 
+          to="/profile" 
+          className="flex items-center gap-3 px-4 py-2 text-gray-400 hover:text-white transition-colors"
+        >
+          <User size={18} />
+          <span className="text-sm font-medium">Profile Settings</span>
+        </Link>
+        <button 
+          onClick={handleLogout}
+          className="flex items-center gap-3 px-4 py-2 text-gray-400 hover:text-red-400 transition-colors w-full text-left"
+        >
+          <LogOut size={18} />
+          <span className="text-sm font-medium">Logout</span>
+        </button>
+      </div>
+    </div>
   );
-}
+};
+
+export default AppSidebar;

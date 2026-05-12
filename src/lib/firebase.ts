@@ -1,18 +1,24 @@
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
+import { getStorage } from "firebase/storage";
 
+// This object tells the app to look at your .env file
 const firebaseConfig = {
-  apiKey: "AIzaSyASiZZ55wWmYbehDd2ATG0YIzsdzldvDYk",
-  authDomain: "minor-project-3de2f.firebaseapp.com",
-  projectId: "minor-project-3de2f",
-  storageBucket: "minor-project-3de2f.firebasestorage.app",
-  messagingSenderId: "942478813921",
-  appId: "1:942478813921:web:a3b24d39aa9af7d15265a0",
-  measurementId: "G-9H8JKTY0W8",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
+// Initialize Firebase
 const app = initializeApp(firebaseConfig);
+
+// Exporting with names so other files can use them
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+export const storage = getStorage(app);
+
 export default app;
