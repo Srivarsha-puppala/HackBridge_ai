@@ -6,7 +6,7 @@ import {
 } from "firebase/auth";
 import { 
   doc, 
-  getDoc, 
+  onSnapshot, 
   setDoc, 
   serverTimestamp 
 } from "firebase/firestore";
@@ -24,6 +24,8 @@ export interface Profile {
   verifiedSkills?: string[];
   isVerified?: boolean;
   role?: string;
+  teamId?: string;    // Added for HackBridge Logic
+  teamName?: string;  // Added for HackBridge Logic
   portfolioData?: {
     domain?: string;
     primary_category?: string;
@@ -46,50 +48,52 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [profile, setProfile] = useState<any | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // 1. Listen for Auth Changes
+  // 1. Listen for Auth Changes and Profile Data
   useEffect(() => {
-   const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-    setUser(currentUser);
-    
-    if (currentUser) {
-      try {
-        // Line 46 is likely this getDoc call
+    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      
+      if (currentUser) {
+        // Use onSnapshot for real-time updates across the app
         const docRef = doc(db, "profiles", currentUser.uid);
-        const docSnap = await getDoc(docRef);
-        
-        if (docSnap.exists()) {
-          setProfile(docSnap.data());
-        } else {
-          console.log("No profile found for this UID, user might need onboarding.");
-          setProfile(null);
-        }
-      } catch (error) {
-        // This stops the app from crashing with "Uncaught (in promise)"
-        console.error("Error fetching profile on login:", error);
-        setProfile(null);
-      }
-    } else {
-      setProfile(null);
-    }
-    setLoading(false);
-  });
+        const unsubscribeProfile = onSnapshot(docRef, (docSnap) => {
+          if (docSnap.exists()) {
+            setProfile(docSnap.data() as Profile);
+          } else {
+            console.log("No profile found, user likely needs onboarding.");
+            setProfile(null);
+          }
+          setLoading(false);
+        }, (error) => {
+          console.error("Profile sync error:", error);
+          setLoading(false);
+        });
 
-  return () => unsubscribe();
-}, []);
-  // 2. THE FIX: Sync Profile using UID as Document ID
+        return () => unsubscribeProfile();
+      } else {
+        setProfile(null);
+        setLoading(false);
+      }
+    });
+
+    return () => unsubscribeAuth();
+  }, []);
+
+  // 2. Sync Profile (Corrected to use "profiles" collection)
   const syncProfile = async (data: any) => {
     if (!auth.currentUser) throw new Error("No authenticated user");
 
     try {
-      // We use auth.currentUser.uid to match your Security Rules
-      const userRef = doc(db, "users", auth.currentUser.uid);
+      // Updated from "users" to "profiles" to match your rules and listener
+      const profileRef = doc(db, "profiles", auth.currentUser.uid);
       
       const profileData = {
         uid: auth.currentUser.uid,
         email: auth.currentUser.email,
+        name: data.name || data.username || "",
         username: data.username || "",
         bio: data.bio || "",
         githubUrl: data.githubUrl || "",
@@ -97,12 +101,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updatedAt: serverTimestamp(),
       };
 
-      await setDoc(userRef, profileData, { merge: true });
-      setProfile(profileData);
+      await setDoc(profileRef, profileData, { merge: true });
+      // We don't manually setProfile(profileData) here because 
+      // the onSnapshot listener above will handle it automatically!
       console.log("Profile successfully synced to Firestore!");
     } catch (error) {
       console.error("Profile sync error details:", error);
-      throw error; // Pass the error to the UI to show an alert
+      throw error;
     }
   };
 
@@ -112,7 +117,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   return (
     <AuthContext.Provider value={{ user, profile, loading, logout, syncProfile }}>
-      {!loading && children}
+      {children}
     </AuthContext.Provider>
   );
 };

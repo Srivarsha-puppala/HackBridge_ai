@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { db, auth } from '../lib/firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { automateTeamFields } from '../services/aiMatcher'; // Ensure this path is correct
+import { toast } from 'sonner';
 
 const CreateTeam: React.FC = () => {
   // Input for the AI to analyze
@@ -18,51 +19,90 @@ const CreateTeam: React.FC = () => {
   // Step 1: The AI Automation Logic
   const handleAIMagic = async () => {
     if (!projectPitch || projectPitch.length < 20) {
-      alert("Please provide a bit more detail about your project for the AI to analyze!");
+      toast.error("Please provide a bit more detail about your project for the AI to analyze!");
       return;
     }
 
     setIsAnalyzing(true);
+    const loadingToast = toast.loading("AI is analyzing your project pitch...");
     const structuredData = await automateTeamFields(projectPitch);
+
+    toast.dismiss(loadingToast);
 
     if (structuredData) {
       // Mapping AI output to our Firestore schema
-      setRequiredSkills(structuredData.requiredSkills);
-      setOpenRoles(structuredData.openRoles);
-      setCategory(structuredData.projectCategory);
+      setRequiredSkills(structuredData.requiredSkills || []);
+      setOpenRoles(structuredData.openRoles || []);
+      setCategory(structuredData.projectCategory || "General");
+      toast.success("Requirements auto-filled!");
     } else {
-      alert("AI failed to extract data. Please check your API key or connection.");
+      toast.error("AI failed to extract data. Please check your API key or connection.");
     }
     setIsAnalyzing(false);
   };
 
-  // Step 2: Saving the "AI-populated" data to Firestore
+  // Step 2: Saving the "AI-populated" data to Firestore & Triggering Backend Embeddings
   const handleSubmitTeam = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!teamName || requiredSkills.length === 0) {
-      alert("Please ensure the team has a name and skills are populated.");
+      toast.error("Please ensure the team has a name and skills are populated.");
       return;
     }
 
     setIsSubmitting(true);
+    const submissionToast = toast.loading("Launching your squad globally...");
+
     try {
-      await addDoc(collection(db, "teams"), {
+      // 1. Save initial document text structure directly to your collection fields
+      const docRef = await addDoc(collection(db, "teams"), {
         name: teamName,
         description: projectPitch,
-        requiredSkills: requiredSkills, // Now an array of strings
-        openRoles: openRoles,           // Now an array of strings
+        requiredSkills: requiredSkills, 
+        openRoles: openRoles,           
         projectCategory: category,
-       // ... inside handleSubmitTeam ...
-       members: [auth.currentUser?.uid], 
-       createdBy: auth.currentUser?.uid, // Changed from user.uid to fix the error
-      createdAt: serverTimestamp(),
-      // ...
+        members: [auth.currentUser?.uid], 
+        createdBy: auth.currentUser?.uid, 
+        createdAt: serverTimestamp(),
+        compatibility: 0 // Default baseline state setting
       });
-      alert("Squad created successfully! AI has listed your requirements.");
+
+      // 2. Fire backend pipeline action route to calculate high-dimensional vector similarity spaces
+      const vectorIndexResponse = await fetch('http://localhost:5000/api/update-team-vector', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          teamId: docRef.id, // Newly generated document hash id parameter
+          name: teamName,
+          description: projectPitch,
+          projectCategory: category,
+          openRoles: openRoles
+        })
+      });
+
+      toast.dismiss(submissionToast);
+
+      if (!vectorIndexResponse.ok) {
+        throw new Error("Vector update microservice pipeline threw an error.");
+      }
+
+      toast.success("Squad created successfully with native AI Semantic Vector Indexing!");
+      
+      // Reset form states completely upon successful operations completion
+      setTeamName("");
+      setProjectPitch("");
+      setRequiredSkills([]);
+      setOpenRoles([]);
+      setCategory("");
+
     } catch (error) {
-      console.error("Error creating team:", error);
+      toast.dismiss(submissionToast);
+      console.error("Error creating team and mapping vector coordinates:", error);
+      toast.error("Squad saved locally, but AI vector indexing failed.");
+    } finally {
+      setIsSubmitting(false);
     }
-    setIsSubmitting(false);
   };
 
   return (
@@ -80,6 +120,7 @@ const CreateTeam: React.FC = () => {
             onChange={(e) => setProjectPitch(e.target.value)}
           />
           <button
+            type="button"
             onClick={handleAIMagic}
             disabled={isAnalyzing}
             className="mt-3 flex items-center gap-2 text-sm font-bold text-purple-400 hover:text-purple-300 disabled:opacity-50"
@@ -96,7 +137,7 @@ const CreateTeam: React.FC = () => {
             <label className="block text-sm font-medium text-gray-400 mb-1">Squad Name</label>
             <input
               type="text"
-              className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2"
+              className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2 focus:ring-2 focus:ring-purple-500 outline-none"
               value={teamName}
               onChange={(e) => setTeamName(e.target.value)}
               required
@@ -125,8 +166,8 @@ const CreateTeam: React.FC = () => {
 
           <button
             type="submit"
-            disabled={isSubmitting}
-            className="w-full py-4 bg-gradient-to-r from-purple-600 to-blue-600 rounded-xl font-bold text-lg hover:scale-[1.02] transition-transform"
+            disabled={isSubmitting || isAnalyzing}
+            className="w-full py-4 bg-gradient-to-r from-purple-600 to-blue-600 rounded-xl font-bold text-lg hover:scale-[1.02] transition-transform disabled:opacity-50 disabled:hover:scale-100"
           >
             {isSubmitting ? "Building Squad..." : "Launch Squad"}
           </button>
