@@ -46,7 +46,7 @@ const FindTeam = () => {
 
       setIsSearching(true);
       try {
-        const response = await fetch('http://localhost:5000/api/semantic-search', {
+        const response = await fetch('${import.meta.env.VITE_API_BASE_URL}/api/semantic-search', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ searchQuery: cleanQuery })
@@ -96,7 +96,7 @@ const FindTeam = () => {
     try {
       const currentContextPool = searchQuery.trim() !== "" ? searchResults : teams;
 
-      const response = await fetch('http://localhost:5000/api/magic-suggest', {
+      const response = await fetch('${import.meta.env.VITE_API_BASE_URL}/api/magic-suggest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

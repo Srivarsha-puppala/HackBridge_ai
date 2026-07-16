@@ -67,7 +67,7 @@ const CreateTeam: React.FC = () => {
       });
 
       // 2. Fire backend pipeline action route to calculate high-dimensional vector similarity spaces
-      const vectorIndexResponse = await fetch('http://localhost:5000/api/update-team-vector', {
+      const vectorIndexResponse = await fetch('${import.meta.env.VITE_API_BASE_URL}/api/update-team-vector', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -178,3 +178,4 @@ const CreateTeam: React.FC = () => {
 };
 
 export default CreateTeam;
+
